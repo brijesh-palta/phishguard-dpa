@@ -1,0 +1,13 @@
+From: order-update@amazon.com
+Subject: Amazon Order #113-8472910 Confirmed
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Received-SPF: Pass (amazonses.com authorized)
+DKIM-Signature: v=1; a=rsa-sha256; d=amazon.com; s=default; b=xyz789abc
+
+Hello,
+
+Your order is confirmed, ships in 2 business days.
+Track at: https://www.amazon.com/gp/your-account/order-history
+
+Thank you for shopping with Amazon.

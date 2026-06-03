@@ -1,0 +1,13 @@
+From: scrum.master@company.com
+Subject: Sprint Review Notes - Q3
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+Received-SPF: Pass (company.com authorized)
+DKIM-Signature: v=1; a=rsa-sha256; d=amazon.com; s=default; b=xyz789abc
+
+Hi team,
+
+Sprint notes: https://confluence.company.com/display/ENG/sprint-42
+Feature freeze Friday, deploy Monday. No action needed.
+
+Alex
