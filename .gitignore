@@ -17,6 +17,8 @@ env/
 artifacts/
 logs/
 data/app_state.json
+data/raw/
+data/processed/
 
 # Local GoPhish binary package
 gophish-v0.12.1-windows-64bit/

@@ -15,7 +15,17 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_recall_curve,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -64,11 +74,12 @@ RISKY_ATTACHMENT_EXTENSIONS = {
     ".zip",
 }
 TRACKING_IMAGE_HINTS = ("pixel", "track", "tracking", "beacon", "open")
-MODEL_VERSION = 2
+MODEL_VERSION = 3
 FEATURE_COLUMNS = [
     "subject",
     "body",
     "urls",
+    "url_count_hint",
     "html_body",
     "image_urls",
     "attachment_names",
@@ -123,6 +134,18 @@ def _normalize_attachment_names(attachments: str | Iterable[str] | None) -> list
         pieces = re.split(r"[\n,;]+", attachments)
         return [piece.strip() for piece in pieces if piece.strip()]
     return [str(item).strip() for item in attachments if str(item).strip()]
+
+
+def _numeric_hint(value: object) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, float) and pd.isna(value):
+        return 0.0
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        match = re.search(r"\d+", str(value))
+        return float(match.group(0)) if match else 0.0
 
 
 def _dedupe(values: Iterable[str]) -> list[str]:
@@ -455,13 +478,15 @@ def _record_to_text(record: dict | pd.Series) -> str:
         f"{image.get('alt', '')} {image.get('src', '')}" for image in html_summary.get("images", [])
     )
     urls = " ".join(_normalize_urls(record.get("urls", "")))
+    url_count_hint = _numeric_hint(record.get("url_count_hint", 0))
+    url_hint_text = "contains_url" if url_count_hint > 0 else ""
     image_urls = " ".join(_normalize_urls(record.get("image_urls", "")))
     attachments = " ".join(_normalize_attachment_names(record.get("attachment_names", "")))
     sender = str(record.get("sender_email", "") or "")
     reply_to = str(record.get("reply_to_email", "") or "")
     expected = str(record.get("expected_domain", "") or "")
     return (
-        f"{subject}\n{body}\n{html_text}\n{html_link_text}\n{urls}\n{html_images}\n"
+        f"{subject}\n{body}\n{html_text}\n{html_link_text}\n{urls}\n{url_hint_text}\n{html_images}\n"
         f"{image_urls}\n{attachments}\n{sender}\n{reply_to}\n{expected}"
     ).lower()
 
@@ -506,6 +531,7 @@ class HeuristicFeatureTransformer(BaseEstimator, TransformerMixin):
             text = _record_to_text(row)
             html_summary = _summarize_html(str(row.get("html_body", "") or ""))
             urls = _dedupe(_normalize_urls(row.get("urls", "")) + _html_urls(html_summary))
+            url_count_hint = _numeric_hint(row.get("url_count_hint", 0))
             image_urls = _dedupe(_normalize_urls(row.get("image_urls", "")) + _html_image_urls(html_summary))
             attachments = _normalize_attachment_names(row.get("attachment_names", ""))
             keyword_count = sum(1 for word in PHISHING_KEYWORDS if word in text)
@@ -548,7 +574,7 @@ class HeuristicFeatureTransformer(BaseEstimator, TransformerMixin):
             features.append(
                 [
                     len(text),
-                    len(urls),
+                    max(len(urls), url_count_hint),
                     keyword_count,
                     urgency_count,
                     money_count,
@@ -587,12 +613,33 @@ def build_pipeline() -> Pipeline:
             ("text", EmailTextTransformer()),
             (
                 "tfidf",
-                TfidfVectorizer(
-                    lowercase=True,
-                    stop_words="english",
-                    ngram_range=(1, 2),
-                    min_df=1,
-                    max_features=3500,
+                FeatureUnion(
+                    [
+                        (
+                            "word",
+                            TfidfVectorizer(
+                                lowercase=True,
+                                strip_accents="unicode",
+                                stop_words="english",
+                                ngram_range=(1, 2),
+                                min_df=1,
+                                max_features=9000,
+                                sublinear_tf=True,
+                            ),
+                        ),
+                        (
+                            "char",
+                            TfidfVectorizer(
+                                lowercase=True,
+                                strip_accents="unicode",
+                                analyzer="char_wb",
+                                ngram_range=(3, 5),
+                                min_df=1,
+                                max_features=6000,
+                                sublinear_tf=True,
+                            ),
+                        ),
+                    ]
                 ),
             ),
         ]
@@ -611,7 +658,56 @@ def build_pipeline() -> Pipeline:
     )
 
 
-def train_model(dataset_path: Path, model_path: Path) -> dict:
+def _choose_decision_threshold(
+    y_true: pd.Series,
+    probabilities: np.ndarray,
+    recall_floor: float = 0.9,
+) -> tuple[float, dict]:
+    precision, recall, thresholds = precision_recall_curve(y_true, probabilities)
+    if thresholds.size == 0:
+        return 0.5, {"reason": "not enough thresholds", "recall_floor": recall_floor}
+
+    candidates: list[tuple[float, float, float, float]] = []
+    for index, threshold in enumerate(thresholds):
+        candidate_precision = float(precision[index])
+        candidate_recall = float(recall[index])
+        candidate_f1 = (
+            (2 * candidate_precision * candidate_recall) / (candidate_precision + candidate_recall)
+            if candidate_precision + candidate_recall
+            else 0.0
+        )
+        candidates.append((candidate_f1, candidate_precision, candidate_recall, float(threshold)))
+
+    recall_candidates = [item for item in candidates if item[2] >= recall_floor]
+    selected_pool = recall_candidates or candidates
+    selected = max(selected_pool, key=lambda item: (item[0], item[1], item[2]))
+    return selected[3], {
+        "reason": "max_f1_with_recall_floor" if recall_candidates else "max_f1_no_recall_floor_match",
+        "recall_floor": recall_floor,
+        "f1": selected[0],
+        "precision": selected[1],
+        "recall": selected[2],
+    }
+
+
+def _safe_auc(metric_name: str, y_true: pd.Series, probabilities: np.ndarray) -> float | None:
+    try:
+        if metric_name == "roc_auc":
+            return round(float(roc_auc_score(y_true, probabilities)), 4)
+        if metric_name == "average_precision":
+            return round(float(average_precision_score(y_true, probabilities)), 4)
+    except ValueError:
+        return None
+    return None
+
+
+def train_model(
+    dataset_path: Path,
+    model_path: Path,
+    test_size: float = 0.25,
+    random_state: int = 42,
+    recall_floor: float = 0.9,
+) -> dict:
     data = pd.read_csv(dataset_path)
     required = {"subject", "body", "urls", "label"}
     missing = required.difference(data.columns)
@@ -623,26 +719,57 @@ def train_model(dataset_path: Path, model_path: Path) -> dict:
             data[column] = ""
     X = data[FEATURE_COLUMNS].fillna("")
     y = data["label"].astype(int)
+    class_counts = y.value_counts().to_dict()
+    stratify = y if y.nunique() == 2 and min(class_counts.values()) >= 2 else None
     X_train, X_test, y_train, y_test = train_test_split(
         X,
         y,
-        test_size=0.25,
-        random_state=42,
-        stratify=y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=stratify,
     )
 
     pipeline = build_pipeline()
     pipeline.fit(X_train, y_train)
-    predictions = pipeline.predict(X_test)
+    probabilities = pipeline.predict_proba(X_test)[..., list(pipeline.named_steps["model"].classes_).index(1)]
+    decision_threshold, threshold_details = _choose_decision_threshold(y_test, probabilities, recall_floor)
+    if decision_threshold > 0.5:
+        threshold_details = {**threshold_details, "capped_from": float(decision_threshold), "cap": 0.5}
+        decision_threshold = 0.5
+    predictions = (probabilities >= decision_threshold).astype(int)
     accuracy = accuracy_score(y_test, predictions)
     report = classification_report(y_test, predictions, output_dict=True, zero_division=0)
+    precision = precision_score(y_test, predictions, zero_division=0)
+    recall = recall_score(y_test, predictions, zero_division=0)
+    f1 = f1_score(y_test, predictions, zero_division=0)
+    matrix = confusion_matrix(y_test, predictions, labels=[0, 1]).tolist()
+    metrics = {
+        "accuracy": round(float(accuracy), 4),
+        "precision": round(float(precision), 4),
+        "recall": round(float(recall), 4),
+        "f1": round(float(f1), 4),
+        "roc_auc": _safe_auc("roc_auc", y_test, probabilities),
+        "average_precision": _safe_auc("average_precision", y_test, probabilities),
+        "confusion_matrix": {
+            "labels": ["legitimate", "phishing"],
+            "matrix": matrix,
+        },
+        "report": report,
+        "decision_threshold": round(float(decision_threshold), 4),
+        "threshold_details": threshold_details,
+        "model_version": MODEL_VERSION,
+        "samples": int(len(data)),
+        "train_samples": int(len(X_train)),
+        "test_samples": int(len(X_test)),
+        "class_counts": {str(key): int(value) for key, value in class_counts.items()},
+    }
 
     model_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(
-        {"version": MODEL_VERSION, "pipeline": pipeline, "metrics": {"accuracy": accuracy, "report": report}},
+        {"version": MODEL_VERSION, "pipeline": pipeline, "metrics": metrics},
         model_path,
     )
-    return {"accuracy": round(float(accuracy), 4), "samples": int(len(data)), "model_path": str(model_path)}
+    return {**metrics, "model_path": str(model_path)}
 
 
 def analyze_email_structure(
@@ -862,6 +989,7 @@ class PhishingDetectorService:
                     "subject": subject or "",
                     "body": body or "",
                     "urls": " ".join(normalized_urls),
+                    "url_count_hint": len(normalized_urls),
                     "html_body": html_body or "",
                     "image_urls": " ".join(normalized_images),
                     "attachment_names": " ".join(normalized_attachments),
@@ -878,7 +1006,8 @@ class PhishingDetectorService:
         sender_probability = sender_analysis["risk_score"] / 100
         structure_probability = structure_analysis["risk_score"] / 100
         phishing_probability = max(content_probability, sender_probability, structure_probability)
-        label = "phishing" if phishing_probability >= 0.5 else "legitimate"
+        decision_threshold = float(self._metrics.get("decision_threshold", 0.5))
+        label = "phishing" if phishing_probability >= decision_threshold else "legitimate"
         confidence = phishing_probability if label == "phishing" else 1 - phishing_probability
         risk_level = "high" if phishing_probability >= 0.75 else "medium" if phishing_probability >= 0.45 else "low"
         return {
@@ -901,4 +1030,8 @@ class PhishingDetectorService:
             "sender_analysis": sender_analysis,
             "structure_analysis": structure_analysis,
             "model_accuracy": round(float(self._metrics.get("accuracy", 0)), 4),
+            "model_precision": round(float(self._metrics.get("precision", 0)), 4),
+            "model_recall": round(float(self._metrics.get("recall", 0)), 4),
+            "model_f1": round(float(self._metrics.get("f1", 0)), 4),
+            "decision_threshold": round(decision_threshold, 4),
         }

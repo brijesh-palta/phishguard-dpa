@@ -43,7 +43,30 @@ python -m unittest discover -s tests
 python -m uvicorn app:app --reload --port 8000
 ```
 
+## Training With Larger Public Datasets
+Install the Parquet dependency first:
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Recommended public source for a stronger baseline:
+```powershell
+python scripts\build_training_dataset.py --download-hf-seven train eval test --include-sample --output data\processed\training_emails.csv
+python scripts\train_model.py --dataset data\processed\training_emails.csv --recall-floor 0.92
+```
+
+Kaggle sources can also be added after configuring your Kaggle API token:
+```powershell
+kaggle datasets download -d avnbluefox/avn-phishing-email-classification-dataset -p data\raw\kaggle\avn --unzip
+kaggle datasets download -d naserabdullahalam/phishing-email-dataset -p data\raw\kaggle\naser --unzip
+python scripts\build_training_dataset.py --include-raw-dir --include-sample --output data\processed\training_emails.csv
+python scripts\train_model.py --dataset data\processed\training_emails.csv --recall-floor 0.92
+```
+
+Raw public corpora can contain personal data and malicious URLs. Keep `data/raw`, `data/processed`, and `artifacts` local and do not click links found inside training data.
+
 ## Project Documents
 - `docs/15_day_plan.md`
 - `docs/gophish_setup.md`
 - `docs/security_scope.md`
+- `docs/training_data_sources.md`
