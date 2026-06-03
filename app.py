@@ -3,12 +3,16 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from phishguard.detector import PhishingDetectorService
+from phishguard.detector import (
+    PhishingDetectorService,
+    analyze_file_content,
+    analyze_sender,
+)
 from phishguard.generator import generate_training_challenge
 from phishguard.gophish_client import get_gophish_status
 from phishguard.schemas import DetectionRequest, EventRequest, TrainingRequest
@@ -17,6 +21,10 @@ from phishguard.storage import JsonStore
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+
+_PROCESSED_DATASET = BASE_DIR / "data" / "processed" / "training_emails.csv"
+_SAMPLE_DATASET = BASE_DIR / "data" / "sample_emails.csv"
+_DATASET_PATH = _PROCESSED_DATASET if _PROCESSED_DATASET.exists() else _SAMPLE_DATASET
 
 app = FastAPI(
     title="AI Phishing Detection and Simulation Platform",
@@ -34,7 +42,7 @@ app.add_middleware(
 
 store = JsonStore(BASE_DIR / "data" / "app_state.json")
 detector = PhishingDetectorService(
-    dataset_path=BASE_DIR / "data" / "sample_emails.csv",
+    dataset_path=_DATASET_PATH,
     model_path=BASE_DIR / "artifacts" / "phishing_detector.joblib",
 )
 
@@ -189,6 +197,55 @@ def training_tips(scenario: str = "general") -> HTMLResponse:
         </html>
         """
     )
+
+
+_ALLOWED_UPLOAD_EXTENSIONS = {
+    ".pdf", ".eml",
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif",
+}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@app.post("/api/detect/upload")
+async def detect_uploaded_file(
+    file: UploadFile = File(...),
+    sender_email: str = Form(default=""),
+    expected_domain: str = Form(default=""),
+) -> JSONResponse:
+    filename = file.filename or "unknown"
+    suffix = Path(filename.lower()).suffix
+    if suffix not in _ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(_ALLOWED_UPLOAD_EXTENSIONS)}",
+        )
+
+    content = await file.read()
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 10 MB limit")
+
+    file_analysis = analyze_file_content(filename, content)
+
+    sender_result = None
+    if sender_email:
+        sender_result = analyze_sender(sender_email, expected_domain=expected_domain)
+
+    risk_score = file_analysis.get("risk_score", 0)
+    if sender_result:
+        risk_score = max(risk_score, sender_result.get("risk_score", 0))
+
+    label = "phishing" if risk_score >= 50 else "legitimate"
+    risk_level = "high" if risk_score >= 75 else "medium" if risk_score >= 40 else "low"
+
+    return JSONResponse({
+        "filename": filename,
+        "file_type": file_analysis.get("type", "unknown"),
+        "label": label,
+        "risk_level": risk_level,
+        "risk_score": risk_score,
+        "file_analysis": file_analysis,
+        "sender_analysis": sender_result,
+    })
 
 
 @app.get("/api/gophish/status")

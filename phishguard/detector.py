@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import email as _email_stdlib
+import io
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from email import policy as _email_policy
 from email.utils import parseaddr
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 import joblib
 import numpy as np
@@ -32,49 +35,59 @@ from sklearn.preprocessing import StandardScaler
 
 
 PHISHING_KEYWORDS = {
-    "urgent",
-    "verify",
-    "password",
-    "suspended",
-    "locked",
-    "confirm",
-    "account",
-    "security",
-    "invoice",
-    "payment",
-    "limited",
-    "expire",
-    "credential",
-    "login",
-    "wallet",
-    "prize",
-    "winner",
-    "refund",
+    # Account / access
+    "urgent", "verify", "password", "suspended", "locked", "confirm", "account",
+    "credential", "login", "username", "authenticate", "reactivate", "deactivate",
+    "disable", "restrict", "blocked", "unauthorized", "access denied", "sign in",
+    # Financial
+    "invoice", "payment", "limited", "expire", "refund", "bank", "wire",
+    "transfer", "payroll", "wallet", "credit", "debit", "billing", "overdue",
+    "outstanding", "tax", "irs", "treasury", "stimulus", "compensation",
+    "cryptocurrency", "bitcoin", "crypto",
+    # Security / alert
+    "security", "alert", "warning", "notice", "suspicious", "unusual", "breach",
+    "compromised", "hacked", "threat", "malware", "virus", "ransomware",
+    # Urgency / pressure
+    "immediately", "final", "last chance", "act now", "expires today",
+    "action required", "response required", "24 hours", "48 hours",
+    # Prize / reward
+    "prize", "winner", "won", "reward", "bonus", "gift", "lottery",
+    "claim", "selected", "congratulations",
+    # Package / delivery
+    "package", "parcel", "shipment", "delivery", "courier", "customs",
+    # Tech-support / impersonation
+    "helpdesk", "support ticket", "reset", "microsoft", "apple", "google",
+    "amazon", "paypal", "netflix", "dropbox", "docusign",
+    # HR / legal
+    "termination", "lawsuit", "legal action", "court", "subpoena",
 }
 
-SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "cutt.ly", "is.gd"}
-SUSPICIOUS_TLDS = {".zip", ".mov", ".top", ".xyz", ".club", ".click", ".work", ".loan"}
+SHORTENERS = {
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "cutt.ly", "is.gd",
+    "buff.ly", "short.io", "rb.gy", "u.to", "shorturl.at", "clck.ru",
+    "x.co", "youtu.be", "lnkd.in", "db.tt", "qr.ae", "tr.im", "tiny.cc",
+    "snip.ly", "bl.ink", "rebrand.ly", "clickmeter.com", "bc.vc",
+}
+SUSPICIOUS_TLDS = {
+    # Registered for free / commonly abused
+    ".zip", ".mov", ".top", ".xyz", ".club", ".click", ".work", ".loan",
+    ".tk", ".ml", ".ga", ".cf", ".gq",
+    # Cheap / frequently misused
+    ".pw", ".cc", ".su", ".ws", ".biz", ".info", ".online", ".site",
+    ".live", ".fun", ".icu", ".vip", ".rest",
+}
+OPEN_REDIRECT_PARAMS = {
+    "url=", "redirect=", "goto=", "next=", "return=",
+    "redir=", "returnurl=", "continue=", "target=", "out=",
+}
 RISKY_ATTACHMENT_EXTENSIONS = {
-    ".bat",
-    ".cmd",
-    ".docm",
-    ".exe",
-    ".hta",
-    ".html",
-    ".htm",
-    ".img",
-    ".iso",
-    ".js",
-    ".lnk",
-    ".ps1",
-    ".rar",
-    ".scr",
-    ".vbs",
-    ".xlsm",
-    ".zip",
+    ".bat", ".cmd", ".docm", ".exe", ".hta", ".html", ".htm",
+    ".img", ".iso", ".js", ".lnk", ".ps1", ".rar", ".scr",
+    ".vbs", ".xlsm", ".zip", ".msi", ".jar", ".dll", ".reg",
+    ".wsf", ".pif", ".com", ".cpl", ".inf",
 }
 TRACKING_IMAGE_HINTS = ("pixel", "track", "tracking", "beacon", "open")
-MODEL_VERSION = 3
+MODEL_VERSION = 4
 FEATURE_COLUMNS = [
     "subject",
     "body",
@@ -496,7 +509,11 @@ def _url_flags(url: str) -> dict[str, int | float]:
     host = parsed.netloc.lower()
     path = parsed.path.lower()
     full = url.lower()
+    query = parsed.query.lower()
     dot_count = host.count(".")
+
+    open_redirect = int(any(param in query for param in OPEN_REDIRECT_PARAMS))
+    has_homograph = int("xn--" in host)
 
     return {
         "has_ip": int(bool(re.search(r"(\d{1,3}\.){3}\d{1,3}", host))),
@@ -507,7 +524,9 @@ def _url_flags(url: str) -> dict[str, int | float]:
         "is_https": int(parsed.scheme == "https"),
         "long_url": int(len(full) > 90),
         "suspicious_tld": int(any(host.endswith(tld) for tld in SUSPICIOUS_TLDS)),
-        "login_path": int(any(term in path for term in ("login", "verify", "secure", "account"))),
+        "login_path": int(any(term in path for term in ("login", "verify", "secure", "account", "password", "credential"))),
+        "open_redirect": open_redirect,
+        "has_homograph": has_homograph,
     }
 
 
@@ -555,6 +574,7 @@ class HeuristicFeatureTransformer(BaseEstimator, TransformerMixin):
             double_extensions = sum(1 for name in attachments if _has_double_extension(name))
             image_heavy = int((len(image_urls) >= 2 or tracking_images > 0) and len(text) < 500)
 
+            base64_body = int(bool(re.search(r"[A-Za-z0-9+/]{40,}={0,2}", text)))
             url_totals = {
                 "has_ip": 0,
                 "has_at_symbol": 0,
@@ -565,6 +585,8 @@ class HeuristicFeatureTransformer(BaseEstimator, TransformerMixin):
                 "long_url": 0,
                 "suspicious_tld": 0,
                 "login_path": 0,
+                "open_redirect": 0,
+                "has_homograph": 0,
             }
             for url in urls:
                 flags = _url_flags(url)
@@ -589,6 +611,8 @@ class HeuristicFeatureTransformer(BaseEstimator, TransformerMixin):
                     url_totals["long_url"],
                     url_totals["suspicious_tld"],
                     url_totals["login_path"],
+                    url_totals["open_redirect"],
+                    url_totals["has_homograph"],
                     int(bool(str(row.get("html_body", "") or "").strip())),
                     len(html_summary.get("links", [])),
                     len(mismatched_links),
@@ -602,6 +626,7 @@ class HeuristicFeatureTransformer(BaseEstimator, TransformerMixin):
                     risky_attachments,
                     double_extensions,
                     image_heavy,
+                    base64_body,
                 ]
             )
         return np.asarray(features, dtype=float)
@@ -848,6 +873,12 @@ def analyze_email_structure(
         if flags["login_path"]:
             risk_score += 8
             findings.append(f"Clickable URL path asks for account access: {host}")
+        if flags["open_redirect"]:
+            risk_score += 20
+            findings.append(f"Clickable URL uses an open redirect parameter: {host}")
+        if flags["has_homograph"]:
+            risk_score += 25
+            findings.append(f"Clickable URL uses punycode/homograph characters: {host}")
         if not flags["is_https"]:
             risk_score += 5
             findings.append(f"Clickable URL is not HTTPS: {host}")
@@ -931,6 +962,292 @@ def explain_prediction(
     if not reasons:
         reasons.append("No strong phishing indicators found")
     return _dedupe(reasons)[:10]
+
+
+# ---------------------------------------------------------------------------
+# File content analysis — PDF, image, EML
+# ---------------------------------------------------------------------------
+
+def analyze_pdf_content(pdf_bytes: bytes) -> dict:
+    """Extract text and links from a PDF and score for phishing indicators."""
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        return {
+            "verdict": "unknown", "risk_score": 0, "page_count": 0,
+            "is_encrypted": False, "embedded_url_count": 0, "urls": [],
+            "keyword_hits": [], "findings": ["PyMuPDF not installed — PDF scanning unavailable"],
+            "text_preview": "",
+        }
+
+    text = ""
+    urls: list[str] = []
+    page_count = 0
+    is_encrypted = False
+
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        is_encrypted = doc.is_encrypted
+        page_count = doc.page_count
+        for page in doc:
+            text += page.get_text()
+            for link in page.get_links():
+                uri = link.get("uri", "")
+                if uri and not uri.startswith(("mailto:", "tel:", "#")):
+                    urls.append(uri)
+        doc.close()
+    except Exception as exc:
+        return {
+            "verdict": "review", "risk_score": 20, "page_count": 0,
+            "is_encrypted": False, "embedded_url_count": 0, "urls": [],
+            "keyword_hits": [], "findings": [f"PDF could not be fully parsed: {exc}"],
+            "text_preview": "",
+        }
+
+    text_lower = text.lower()
+    findings: list[str] = []
+    risk_score = 0
+
+    if is_encrypted:
+        risk_score += 20
+        findings.append("PDF is password-protected, which may hide malicious content")
+
+    keyword_hits = sorted(word for word in PHISHING_KEYWORDS if word in text_lower)
+    if len(keyword_hits) >= 5:
+        risk_score += 30
+        findings.append(f"PDF text contains many phishing keywords: {', '.join(keyword_hits[:6])}")
+    elif len(keyword_hits) >= 2:
+        risk_score += 12
+        findings.append(f"PDF text contains phishing-related terms: {', '.join(keyword_hits[:4])}")
+
+    urgency_matches = re.findall(
+        r"\b(urgent|immediately|within 24 hours|expire|final notice|act now|click here)\b", text_lower
+    )
+    if urgency_matches:
+        risk_score += 20
+        findings.append("PDF text uses urgency or pressure language")
+
+    text_urls = re.findall(r"https?://[^\s<>\"']+", text)
+    all_urls = _dedupe(urls + text_urls)
+
+    suspicious_url_count = 0
+    for url in all_urls[:20]:
+        flags = _url_flags(url)
+        if flags["has_ip"] or flags["is_shortener"] or flags["suspicious_tld"] or not flags["is_https"]:
+            suspicious_url_count += 1
+    if suspicious_url_count >= 2:
+        risk_score += 30
+        findings.append(f"PDF contains {suspicious_url_count} suspicious embedded URL(s)")
+    elif suspicious_url_count == 1:
+        risk_score += 15
+        findings.append("PDF contains a suspicious embedded URL")
+
+    if len(all_urls) > 5:
+        risk_score += 8
+        findings.append(f"PDF contains an unusually high number of URLs ({len(all_urls)})")
+
+    risk_score = min(100, risk_score)
+    verdict = "suspicious" if risk_score >= 60 else "review" if risk_score >= 30 else "low"
+
+    if not findings:
+        findings.append("No phishing indicators found in PDF content")
+
+    return {
+        "verdict": verdict,
+        "risk_score": risk_score,
+        "page_count": page_count,
+        "is_encrypted": is_encrypted,
+        "embedded_url_count": len(all_urls),
+        "urls": all_urls[:10],
+        "keyword_hits": keyword_hits[:8],
+        "findings": _dedupe(findings)[:8],
+        "text_preview": text[:500].strip(),
+    }
+
+
+def analyze_image_content(image_bytes: bytes, filename: str = "") -> dict:
+    """Analyze an image for tracking pixels, QR codes, and phishing URLs."""
+    findings: list[str] = []
+    risk_score = 0
+    qr_urls: list[str] = []
+
+    try:
+        from PIL import Image as _PILImage
+        pil_img = _PILImage.open(io.BytesIO(image_bytes))
+        width, height = pil_img.size
+
+        if width <= 2 and height <= 2:
+            risk_score += 20
+            findings.append(f"Image is very small ({width}x{height}px) — likely a tracking pixel")
+
+    except Exception as exc:
+        return {
+            "verdict": "unknown", "risk_score": 0, "qr_urls": [],
+            "findings": [f"Could not parse image: {exc}"],
+        }
+
+    try:
+        import cv2
+        import numpy as np
+
+        pil_rgb = pil_img.convert("RGB")
+        cv_image = cv2.cvtColor(np.array(pil_rgb), cv2.COLOR_RGB2BGR)
+        qr_detector = cv2.QRCodeDetector()
+        data, _, _ = qr_detector.detectAndDecode(cv_image)
+
+        if data:
+            qr_urls.append(data)
+            risk_score += 25
+            findings.append("Image contains a QR code")
+            if data.startswith(("http://", "https://")):
+                flags = _url_flags(data)
+                if flags["has_ip"]:
+                    risk_score += 30
+                    findings.append("QR code links to a raw IP address (highly suspicious)")
+                if flags["is_shortener"]:
+                    risk_score += 25
+                    findings.append(f"QR code uses a URL shortener: {data[:80]}")
+                if flags["suspicious_tld"]:
+                    risk_score += 20
+                    findings.append("QR code URL uses a suspicious domain extension")
+                if flags["open_redirect"]:
+                    risk_score += 20
+                    findings.append("QR code URL contains an open redirect parameter")
+                if not flags["is_https"]:
+                    risk_score += 15
+                    findings.append("QR code URL is not HTTPS")
+                if flags["login_path"]:
+                    risk_score += 15
+                    findings.append("QR code URL leads to a login or credential page")
+            else:
+                findings.append(f"QR code contains non-URL data: {data[:80]}")
+    except ImportError:
+        findings.append("OpenCV not available — QR code scanning skipped")
+    except Exception:
+        pass
+
+    risk_score = min(100, risk_score)
+    verdict = "suspicious" if risk_score >= 60 else "review" if risk_score >= 30 else "low"
+
+    if not findings:
+        findings.append("No phishing indicators found in image")
+
+    return {
+        "verdict": verdict,
+        "risk_score": risk_score,
+        "qr_urls": qr_urls,
+        "findings": _dedupe(findings)[:6],
+    }
+
+
+def parse_eml_bytes(eml_bytes: bytes) -> dict:
+    """Parse a raw .eml file and return structured fields for phishing analysis."""
+    try:
+        msg = _email_stdlib.message_from_bytes(eml_bytes, policy=_email_policy.default)
+    except Exception as exc:
+        return {"error": str(exc)}
+
+    subject = str(msg.get("Subject", ""))
+    sender = str(msg.get("From", ""))
+    reply_to = str(msg.get("Reply-To", ""))
+    received_spf = str(msg.get("Received-SPF", ""))
+    dkim_sig = str(msg.get("DKIM-Signature", ""))
+    message_id = str(msg.get("Message-ID", ""))
+
+    body = ""
+    html_body = ""
+    attachments: list[str] = []
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            ct = part.get_content_type()
+            disp = str(part.get_content_disposition() or "")
+            fname = part.get_filename()
+            if fname or "attachment" in disp:
+                attachments.append(fname or "unknown")
+            elif ct == "text/plain" and "attachment" not in disp:
+                try:
+                    body += part.get_content() or ""
+                except Exception:
+                    pass
+            elif ct == "text/html" and "attachment" not in disp:
+                try:
+                    html_body += part.get_content() or ""
+                except Exception:
+                    pass
+    else:
+        ct = msg.get_content_type()
+        try:
+            content = msg.get_content() or ""
+        except Exception:
+            content = ""
+        if ct == "text/html":
+            html_body = content
+        else:
+            body = content
+
+    spf_fail = "fail" in received_spf.lower() and "pass" not in received_spf.lower()
+
+    return {
+        "subject": subject,
+        "sender": sender,
+        "reply_to": reply_to,
+        "body": body,
+        "html_body": html_body,
+        "attachments": attachments,
+        "spf_fail": spf_fail,
+        "has_dkim": bool(dkim_sig.strip()),
+        "message_id": message_id,
+        "received_spf": received_spf,
+    }
+
+
+def analyze_file_content(filename: str, file_bytes: bytes) -> dict:
+    """Dispatch file analysis to the appropriate analyzer based on extension."""
+    suffix = Path(filename.lower()).suffix
+    IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
+
+    if suffix == ".pdf":
+        result = analyze_pdf_content(file_bytes)
+        result["type"] = "pdf"
+        return result
+    if suffix in IMAGE_EXTENSIONS:
+        result = analyze_image_content(file_bytes, filename)
+        result["type"] = "image"
+        return result
+    if suffix == ".eml":
+        parsed = parse_eml_bytes(file_bytes)
+        parsed["type"] = "eml"
+        if "error" not in parsed:
+            sender_analysis = analyze_sender(
+                parsed.get("sender"), parsed.get("reply_to")
+            )
+            structure_analysis = analyze_email_structure(
+                html_body=parsed.get("html_body"),
+                attachment_names=parsed.get("attachments"),
+            )
+            spf_findings = ["SPF authentication failed for this email"] if parsed.get("spf_fail") else []
+            dkim_findings = [] if parsed.get("has_dkim") else ["No DKIM signature present"]
+            auth_risk = (30 if parsed.get("spf_fail") else 0) + (10 if not parsed.get("has_dkim") else 0)
+            parsed["sender_analysis"] = sender_analysis
+            parsed["structure_analysis"] = structure_analysis
+            parsed["auth_findings"] = spf_findings + dkim_findings
+            parsed["auth_risk_score"] = auth_risk
+            combined_risk = max(
+                sender_analysis.get("risk_score", 0),
+                structure_analysis.get("risk_score", 0),
+                auth_risk,
+            )
+            parsed["risk_score"] = combined_risk
+            parsed["verdict"] = "suspicious" if combined_risk >= 60 else "review" if combined_risk >= 30 else "low"
+        return parsed
+
+    return {
+        "type": "unsupported",
+        "risk_score": 0,
+        "verdict": "unknown",
+        "findings": [f"File type '{suffix or 'unknown'}' is not supported for content analysis"],
+    }
 
 
 @dataclass
