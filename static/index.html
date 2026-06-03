@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PhishGuard Training Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">AI phishing detection and simulation</p>
+        <h1>PhishGuard Console</h1>
+      </div>
+      <div class="status-pill" id="healthStatus">Checking service</div>
+    </header>
+
+    <main class="layout">
+      <section class="panel detector-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Detection</p>
+            <h2>Email Analyzer</h2>
+          </div>
+          <button id="sampleButton" class="secondary-button" type="button">Load Sample</button>
+        </div>
+
+        <label for="subjectInput">Subject</label>
+        <input id="subjectInput" type="text" value="Urgent password verification required" />
+
+        <div class="field-grid">
+          <div>
+            <label for="senderInput">Sender Email</label>
+            <input id="senderInput" type="text" value="security-alerts@company-support-reset.xyz" />
+          </div>
+          <div>
+            <label for="replyToInput">Reply-To Email</label>
+            <input id="replyToInput" type="text" value="helpdesk.verify@gmail.com" />
+          </div>
+        </div>
+
+        <label for="expectedDomainInput">Expected Company Domain</label>
+        <input id="expectedDomainInput" type="text" value="example.com" />
+
+        <label for="bodyInput">Email Body</label>
+        <textarea id="bodyInput" rows="8">Your account will be suspended within 24 hours. Verify your password immediately to restore access.</textarea>
+
+        <label for="urlInput">URLs</label>
+        <input id="urlInput" type="text" value="http://secure-login-support.xyz/verify" />
+
+        <button id="detectButton" type="button">Analyze Email</button>
+
+        <div id="detectionResult" class="result-box empty">Run an analysis to see the model prediction.</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Campaign</p>
+            <h2>Live Metrics</h2>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <div class="metric"><span id="clickRate">0%</span><p>Click Rate</p></div>
+          <div class="metric"><span id="reportRate">0%</span><p>Report Rate</p></div>
+          <div class="metric"><span id="submitRate">0%</span><p>Submit Rate</p></div>
+          <div class="metric"><span id="detectionsTotal">0</span><p>Detections</p></div>
+        </div>
+        <h3>Highest Risk</h3>
+        <div id="riskList" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Gamification</p>
+            <h2>Leaderboard</h2>
+          </div>
+        </div>
+        <div id="leaderboard" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Behavior</p>
+            <h2>Event Simulator</h2>
+          </div>
+        </div>
+        <label for="employeeSelect">Employee</label>
+        <select id="employeeSelect"></select>
+
+        <label for="eventSelect">Event Type</label>
+        <select id="eventSelect">
+          <option value="opened">Opened email</option>
+          <option value="clicked">Clicked link</option>
+          <option value="submitted">Submitted credentials</option>
+          <option value="reported">Reported phishing</option>
+        </select>
+
+        <button id="eventButton" type="button">Record Event</button>
+        <div id="eventResult" class="result-box empty">Record a behavior event to update scores.</div>
+      </section>
+
+      <section class="panel wide">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Training</p>
+            <h2>Challenge Generator</h2>
+          </div>
+        </div>
+        <div class="inline-controls">
+          <select id="scenarioSelect">
+            <option value="password_reset">Password reset</option>
+            <option value="invoice">Invoice</option>
+            <option value="hr_policy">HR policy</option>
+            <option value="cloud_storage">Cloud storage</option>
+          </select>
+          <select id="difficultySelect">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+          <button id="challengeButton" type="button">Generate Challenge</button>
+        </div>
+        <div id="challengeResult" class="challenge-box empty">Generate a safe training scenario for the campaign.</div>
+      </section>
+
+      <section class="panel wide">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">GoPhish</p>
+            <h2>Integration Status</h2>
+          </div>
+          <button id="gophishButton" class="secondary-button" type="button">Check</button>
+        </div>
+        <div id="gophishStatus" class="result-box empty">Set GOPHISH_API_KEY when you are ready to connect live campaigns.</div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

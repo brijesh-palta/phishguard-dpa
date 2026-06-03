@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments and local secrets
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Generated runtime state
+artifacts/
+logs/
+data/app_state.json
+
+# Local GoPhish binary package
+gophish-v0.12.1-windows-64bit/
+gophish-v0.12.1-windows-64bit.zip
+
+# Local assistant/tooling metadata
+.sixth/

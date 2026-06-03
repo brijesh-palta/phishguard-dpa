@@ -1,0 +1,40 @@
+subject,body,urls,label
+"Urgent password verification required","Your account will be suspended within 24 hours. Verify your password immediately to restore access.","http://secure-login-support.xyz/verify",1
+"Invoice payment failed","Final notice: your invoice payment could not be processed. Confirm your bank details now.","http://billing-payments-alert.top/login",1
+"Shared payroll document","A payroll document has been shared with you. Login to view your confidential salary update.","http://payroll.company-portal.work/session",1
+"Account locked security alert","We detected unusual activity. Confirm your credentials to unlock your account immediately.","http://192.168.10.22/account/verify",1
+"Microsoft storage limit exceeded","Your mailbox storage is full. Click here to upgrade and avoid email deletion.","http://office365-storage-reset.click/login",1
+"Refund waiting confirmation","Your refund is pending. Provide your card information to release payment today.","http://refund-secure-claim.xyz",1
+"Password expires today","Your corporate password expires today. Verify your login using the secure portal.","http://login.company-support.net@evil.example/verify",1
+"Prize winner notification","Congratulations, you have won a gift card. Confirm your identity to claim the prize.","http://tinyurl.com/win-prize-claim",1
+"Unusual sign in detected","Security warning: approve this sign in or your account will be disabled.","http://security-alerts-login.club",1
+"Document requires immediate signature","This confidential document expires in one hour. Sign in with your company password.","http://docs-review-secure.top/account",1
+"Bank account update required","Your banking access is limited until you confirm your account and payment profile.","http://banking-alert-center.xyz/login",1
+"VPN access disabled","Your VPN profile has been disabled. Re-authenticate with your username and password.","http://vpn-support.company-reset.work",1
+"IT helpdesk ticket","Ticket 8432 requires your MFA code to close the security incident.","http://helpdesk-secure-login.click/ticket",1
+"Cloud file deletion notice","Files will be deleted unless you verify your cloud account before midnight.","http://cloud-drive-alert.xyz/verify",1
+"Delivery fee unpaid","Your parcel is held due to unpaid delivery fees. Pay now to release shipment.","http://parcel-fee-update.top/payment",1
+"HR benefits confirmation","Confirm your employee benefits by entering your company credentials.","http://hr-benefits-portal.work/login",1
+"Wire transfer approval","Please urgently approve the attached wire transfer and confirm payment details.","http://finance-approval-center.xyz",1
+"Security training reminder","Your security training course is due Friday. Open the learning portal from the intranet.","https://intranet.example.com/training",0
+"Weekly engineering sync","The engineering sync is moved to Thursday at 10 AM. Agenda is in the project workspace.","https://workspace.example.com/engineering/agenda",0
+"Office lunch menu","Please choose your lunch preference for Friday's team lunch by 3 PM today.","",0
+"Monthly payslip available","Your monthly payslip is available in the official employee portal.","https://employee.example.com/payroll",0
+"Project status update","Sprint review notes are attached in the project board. No action is required before Monday.","https://projects.example.com/board",0
+"Password change completed","This is a confirmation that your password was changed from the official account settings page.","https://accounts.example.com/security",0
+"New starter announcement","Please welcome Priya to the analytics team next week.","",0
+"Facilities maintenance notice","The north lift will be unavailable on Saturday morning for planned maintenance.","",0
+"Expense policy update","The finance team updated the travel expense policy for the next quarter.","https://intranet.example.com/policies/expenses",0
+"Calendar invitation","You have been invited to the quarterly planning meeting in room 4B.","",0
+"Code review requested","A pull request is ready for review in the internal repository.","https://git.example.com/team/repo/pull/42",0
+"Benefits webinar","HR is hosting a benefits webinar next Wednesday. Register through the employee portal.","https://employee.example.com/events/benefits",0
+"Customer feedback summary","The customer success team posted this week's feedback summary.","https://workspace.example.com/customer-feedback",0
+"Training completion receipt","You completed the privacy awareness module. This email is only a receipt.","https://learning.example.com/records",0
+"Security newsletter","This month's security newsletter covers password managers and safe reporting habits.","https://intranet.example.com/security/newsletter",0
+"Release notes published","Version 2.4 release notes are available in the documentation site.","https://docs.example.com/releases/2-4",0
+"Printer service restored","Printing services have been restored in the east office.","",0
+"Team volunteer day","Sign up for the approved company volunteer day through the events page.","https://intranet.example.com/events/volunteer",0
+"Travel booking confirmation","Your approved travel booking is confirmed in the company travel portal.","https://travel.example.com/bookings",0
+"Urgent account action from IT","Immediate action required: confirm your password or email access will be locked.","http://it-support-reset.xyz/login",1
+"New invoice from vendor","Please review the vendor invoice in the approved finance workspace.","https://finance.example.com/vendors/invoices",0
+"MFA reset required","Your MFA has expired. Send your current code to the support portal to avoid suspension.","http://mfa-reset-helpdesk.click",1
