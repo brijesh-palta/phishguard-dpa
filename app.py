@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from phishguard.detector import PhishingDetectorService
@@ -63,12 +64,18 @@ def detect_email(payload: DetectionRequest) -> dict:
         sender_email=payload.sender_email,
         reply_to_email=payload.reply_to_email,
         expected_domain=payload.expected_domain,
+        html_body=payload.html_body,
+        image_urls=payload.image_urls,
+        attachment_names=payload.attachment_names,
     )
     record = store.add_detection(
         {
             "subject": payload.subject,
             "body": payload.body,
             "urls": payload.urls,
+            "html_body": payload.html_body,
+            "image_urls": payload.image_urls,
+            "attachment_names": payload.attachment_names,
             "sender_email": payload.sender_email,
             "reply_to_email": payload.reply_to_email,
             "expected_domain": payload.expected_domain,
@@ -112,6 +119,75 @@ def training_challenge(payload: TrainingRequest) -> dict:
         scenario=payload.scenario,
         difficulty=payload.difficulty,
         employee_name=payload.employee_name,
+        company_name=payload.company_name,
+        base_url=payload.base_url,
+    )
+
+
+@app.get("/training/track/{tracking_id}")
+def training_track(tracking_id: int, scenario: str = "general") -> HTMLResponse:
+    safe_scenario = escape(scenario.replace("_", " ").title())
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Security Awareness Drill</title>
+            <style>
+              body {{ margin: 0; font-family: Arial, Helvetica, sans-serif; background: #eef3f8; color: #17212b; }}
+              main {{ max-width: 760px; margin: 48px auto; padding: 28px; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 8px; }}
+              h1 {{ margin: 0 0 12px; font-size: 28px; }}
+              p {{ line-height: 1.55; }}
+              .pill {{ display: inline-block; padding: 6px 10px; border-radius: 999px; background: #e8f2ff; color: #2368d1; font-weight: 700; font-size: 12px; }}
+            </style>
+          </head>
+          <body>
+            <main>
+              <div class="pill">Authorized training</div>
+              <h1>Security Awareness Drill</h1>
+              <p>You opened a safe training link for the <strong>{safe_scenario}</strong> scenario.</p>
+              <p>In a real review, inspect the sender, hover over links, check domains, and report suspicious messages through your approved process.</p>
+              <p>Tracking ID: {tracking_id}</p>
+            </main>
+          </body>
+        </html>
+        """
+    )
+
+
+@app.get("/training/tips")
+def training_tips(scenario: str = "general") -> HTMLResponse:
+    safe_scenario = escape(scenario.replace("_", " ").title())
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Phishing Safety Tips</title>
+            <style>
+              body {{ margin: 0; font-family: Arial, Helvetica, sans-serif; background: #eef3f8; color: #17212b; }}
+              main {{ max-width: 760px; margin: 48px auto; padding: 28px; background: #ffffff; border: 1px solid #d9e2ec; border-radius: 8px; }}
+              h1 {{ margin: 0 0 12px; font-size: 28px; }}
+              li {{ margin: 10px 0; line-height: 1.45; }}
+            </style>
+          </head>
+          <body>
+            <main>
+              <h1>{safe_scenario} Safety Tips</h1>
+              <ul>
+                <li>Check whether the sender domain matches the expected organization.</li>
+                <li>Hover over buttons and links before opening them.</li>
+                <li>Be cautious with forms, hidden content, tracking images, and unexpected attachments.</li>
+                <li>Report suspicious emails through the approved company channel.</li>
+              </ul>
+            </main>
+          </body>
+        </html>
+        """
     )
 
 

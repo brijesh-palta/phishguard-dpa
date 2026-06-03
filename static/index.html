@@ -45,8 +45,22 @@
         <label for="bodyInput">Email Body</label>
         <textarea id="bodyInput" rows="8">Your account will be suspended within 24 hours. Verify your password immediately to restore access.</textarea>
 
+        <label for="htmlInput">HTML Body</label>
+        <textarea id="htmlInput" rows="6" placeholder="Paste optional HTML email content here"></textarea>
+
         <label for="urlInput">URLs</label>
         <input id="urlInput" type="text" value="http://secure-login-support.xyz/verify" />
+
+        <div class="field-grid">
+          <div>
+            <label for="imageInput">Image URLs</label>
+            <input id="imageInput" type="text" placeholder="https://example.com/banner.png" />
+          </div>
+          <div>
+            <label for="attachmentInput">Attachments</label>
+            <input id="attachmentInput" type="text" placeholder="invoice.pdf, update.html" />
+          </div>
+        </div>
 
         <button id="detectButton" type="button">Analyze Email</button>
 

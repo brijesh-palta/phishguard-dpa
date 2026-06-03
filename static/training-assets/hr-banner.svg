@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220" role="img" aria-labelledby="title desc">
+  <title id="title">Policy acknowledgement illustration</title>
+  <desc id="desc">People cards and an acknowledgement document.</desc>
+  <rect width="640" height="220" fill="#fff3e8"/>
+  <circle cx="132" cy="86" r="34" fill="#2368d1"/>
+  <rect x="74" y="132" width="116" height="46" rx="23" fill="#142033"/>
+  <circle cx="244" cy="86" r="34" fill="#2bbf8a"/>
+  <rect x="186" y="132" width="116" height="46" rx="23" fill="#18865a"/>
+  <rect x="376" y="36" width="174" height="154" rx="8" fill="#ffffff" stroke="#e3c7aa"/>
+  <rect x="402" y="64" width="92" height="14" rx="3" fill="#b66a00"/>
+  <rect x="402" y="96" width="122" height="10" rx="3" fill="#ead7c1"/>
+  <rect x="402" y="120" width="106" height="10" rx="3" fill="#ead7c1"/>
+  <rect x="402" y="144" width="134" height="10" rx="3" fill="#ead7c1"/>
+  <path d="M486 164l16 16 34-41" fill="none" stroke="#18865a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

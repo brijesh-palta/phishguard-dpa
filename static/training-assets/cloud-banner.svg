@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220" role="img" aria-labelledby="title desc">
+  <title id="title">Cloud document sharing illustration</title>
+  <desc id="desc">Cloud storage with shared document cards and a link icon.</desc>
+  <rect width="640" height="220" fill="#edf2ff"/>
+  <path d="M246 144h228c33 0 58-22 58-52 0-28-22-50-51-52-15-29-45-47-82-47-48 0-87 32-94 74-5-2-11-3-17-3-37 0-64 24-64 56 0 27 19 44 22 44z" fill="#ffffff" stroke="#b9cce5" stroke-width="2"/>
+  <rect x="88" y="60" width="160" height="112" rx="8" fill="#ffffff" stroke="#b9cce5"/>
+  <rect x="112" y="86" width="96" height="12" rx="3" fill="#2368d1"/>
+  <rect x="112" y="116" width="120" height="10" rx="3" fill="#d9e2ec"/>
+  <rect x="112" y="140" width="88" height="10" rx="3" fill="#d9e2ec"/>
+  <path d="M354 112h46m-23-23v46" stroke="#2bbf8a" stroke-width="12" stroke-linecap="round"/>
+  <path d="M432 109c16-16 42-16 58 0s16 42 0 58l-20 20" fill="none" stroke="#142033" stroke-width="11" stroke-linecap="round"/>
+  <path d="M452 133l-36 36" stroke="#142033" stroke-width="11" stroke-linecap="round"/>
+</svg>

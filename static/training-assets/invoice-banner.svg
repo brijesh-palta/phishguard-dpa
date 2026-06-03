@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220" role="img" aria-labelledby="title desc">
+  <title id="title">Invoice review illustration</title>
+  <desc id="desc">Invoice documents and a review checklist.</desc>
+  <rect width="640" height="220" fill="#f2f6ea"/>
+  <rect x="70" y="34" width="214" height="154" rx="8" fill="#ffffff" stroke="#cbd8b7"/>
+  <rect x="96" y="60" width="90" height="14" rx="3" fill="#18865a"/>
+  <rect x="96" y="92" width="160" height="10" rx="3" fill="#dbe7cf"/>
+  <rect x="96" y="116" width="132" height="10" rx="3" fill="#dbe7cf"/>
+  <rect x="96" y="140" width="178" height="10" rx="3" fill="#dbe7cf"/>
+  <rect x="354" y="52" width="210" height="128" rx="8" fill="#ffffff" stroke="#cbd8b7"/>
+  <circle cx="390" cy="86" r="12" fill="#18865a"/>
+  <path d="M383 86l7 7 14-18" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="390" cy="122" r="12" fill="#b66a00"/>
+  <path d="M382 122h16" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="390" cy="158" r="12" fill="#2368d1"/>
+  <path d="M382 158h16" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <rect x="424" y="80" width="104" height="10" rx="3" fill="#dbe7cf"/>
+  <rect x="424" y="116" width="132" height="10" rx="3" fill="#dbe7cf"/>
+  <rect x="424" y="152" width="92" height="10" rx="3" fill="#dbe7cf"/>
+</svg>
