@@ -251,3 +251,13 @@ async def detect_uploaded_file(
 @app.get("/api/gophish/status")
 def gophish_status() -> dict:
     return get_gophish_status()
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+    )
