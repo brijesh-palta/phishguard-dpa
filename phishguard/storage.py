@@ -69,6 +69,14 @@ class JsonStore:
     def list_campaigns(self) -> list[dict]:
         return self._read().get("campaigns", [])
 
+    def list_events(self, limit: int = 50, campaign_id: str | None = None, employee_id: str | None = None) -> list[dict]:
+        events = self._read().get("events", [])
+        if campaign_id:
+            events = [event for event in events if event.get("campaign_id") == campaign_id]
+        if employee_id:
+            events = [event for event in events if event.get("employee_id") == employee_id]
+        return events[:limit]
+
     def add_event(self, event: dict) -> dict:
         state = self._read()
         record = {"id": f"evt-{uuid4().hex[:10]}", "timestamp": self._timestamp(), **event}

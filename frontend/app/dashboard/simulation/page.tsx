@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Alert } from '@/components/ui/Alert'
 import { detectionAPI, TrainingChallengeRequest, TrainingChallengeResponse } from '@/lib/api'
+import { useAuth } from '@/lib/hooks'
+import { db } from '@/lib/firebase'
+import { collection, addDoc } from 'firebase/firestore'
 
 const SCENARIO_OPTIONS = [
   { label: 'Password Reset Drill', value: 'password_reset' },
@@ -31,6 +34,7 @@ interface SimulationForm {
 }
 
 export default function SimulationPage() {
+  const { user } = useAuth()
   const [challenge, setChallenge] = useState<TrainingChallengeResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -64,8 +68,17 @@ export default function SimulationPage() {
       }
       const response = await detectionAPI.generateTrainingChallenge(payload)
       setChallenge(response)
+      if (user) {
+        await addDoc(collection(db, 'users', user.uid, 'simulations'), {
+          ...response,
+          scenario: data.scenario,
+          difficulty: data.difficulty,
+          employee_name: data.employee_name,
+          company_name: data.company_name,
+          createdAt: new Date().toISOString(),
+        })
+      }
     } catch (err: any) {
-      console.error(err)
       setError(err?.message || 'Unable to generate a training challenge. Please try again.')
     } finally {
       setLoading(false)

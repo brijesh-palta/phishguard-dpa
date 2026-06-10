@@ -2,27 +2,33 @@
 
 import { useEffect, useState } from 'react'
 import { DashboardLayout } from '@/components/DashboardLayout'
+import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Alert } from '@/components/ui/Alert'
 import { Badge } from '@/components/ui/Badge'
-import { auth, db } from '@/lib/firebase'
+import { db } from '@/lib/firebase'
 import { collection, query, orderBy, getDocs } from 'firebase/firestore'
+import { useAuth } from '@/lib/hooks'
 
 export default function HistoryPage() {
+  const { user, loading: authLoading } = useAuth()
   const [scans, setScans] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const loadScans = async () => {
-      try {
-        if (!auth.currentUser) {
+      if (!user) {
+        if (!authLoading) {
           setError('Not authenticated')
-          return
+          setLoading(false)
         }
+        return
+      }
 
+      try {
         const q = query(
-          collection(db, 'users', auth.currentUser.uid, 'scans'),
+          collection(db, 'users', user.uid, 'scans'),
           orderBy('createdAt', 'desc')
         )
         const querySnapshot = await getDocs(q)
@@ -32,15 +38,14 @@ export default function HistoryPage() {
         }))
         setScans(scanData)
       } catch (err: any) {
-        setError(err.message || 'Failed to load scan history')
-        console.error(err)
+        setError(err?.message || 'Failed to load scan history')
       } finally {
         setLoading(false)
       }
     }
 
     loadScans()
-  }, [])
+  }, [user, authLoading])
 
   return (
     <DashboardLayout>
@@ -101,16 +106,30 @@ export default function HistoryPage() {
                         </td>
                         <td className="py-3 px-4 text-sm">
                           <div className="max-w-xs truncate">
-                            {scan.subject || scan.url || 'N/A'}
+                            <Link
+                              href={
+                                scan.source === 'gophish' && scan.campaign_id
+                                  ? `/dashboard/campaigns/${encodeURIComponent(scan.campaign_id)}`
+                                  : '#'
+                              }
+                              className="text-blue-600 hover:underline"
+                            >
+                              {scan.subject || scan.url || 'N/A'}
+                            </Link>
                           </div>
+                          {scan.sender_email ? (
+                            <div className="text-xs text-gray-500 mt-1">
+                              {scan.sender_email}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="py-3 px-4">
                           <Badge
                             label={
-                              scan.result?.label?.toUpperCase() || 'UNKNOWN'
+                              scan.result?.label?.toUpperCase() || scan.analysis?.label?.toUpperCase() || 'UNKNOWN'
                             }
                             variant={
-                              scan.result?.label === 'phishing'
+                              scan.result?.label === 'phishing' || scan.analysis?.label === 'phishing'
                                 ? 'phishing'
                                 : 'safe'
                             }
@@ -119,11 +138,13 @@ export default function HistoryPage() {
                         <td className="py-3 px-4 text-sm">
                           {scan.result?.confidence
                             ? `${(scan.result.confidence * 100).toFixed(0)}%`
+                            : scan.analysis?.phishing_probability
+                            ? `${(scan.analysis.phishing_probability * 100).toFixed(0)}%`
                             : 'N/A'}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-500">
-                          {new Date(scan.createdAt).toLocaleDateString()} at{' '}
-                          {new Date(scan.createdAt).toLocaleTimeString()}
+                          {scan.createdAt ? new Date(scan.createdAt).toLocaleDateString() : ''} at{' '}
+                          {scan.createdAt ? new Date(scan.createdAt).toLocaleTimeString() : ''}
                         </td>
                       </tr>
                     ))}

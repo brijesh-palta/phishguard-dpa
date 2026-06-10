@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+import os
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -14,13 +15,46 @@ from phishguard.detector import (
     analyze_sender,
 )
 from phishguard.generator import generate_training_challenge
-from phishguard.gophish_client import get_gophish_status
+from phishguard.gophish_client import (
+    get_gophish_campaign_details,
+    get_gophish_campaign_results,
+    get_gophish_campaigns,
+    get_gophish_status,
+)
 from phishguard.schemas import DetectionRequest, EventRequest, TrainingRequest
 from phishguard.storage import JsonStore
 
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+
+try:
+    from dotenv import load_dotenv
+
+    dotenv_path = BASE_DIR / ".env"
+    load_dotenv(dotenv_path=dotenv_path)
+    print(f"Loaded .env from: {dotenv_path}")
+    print("GOPHISH_BASE_URL present:", bool(os.getenv("GOPHISH_BASE_URL")))
+    print("GOPHISH_API_KEY present:", bool(os.getenv("GOPHISH_API_KEY")))
+except ImportError:
+    dotenv_path = BASE_DIR / ".env"
+    if dotenv_path.exists():
+        print("python-dotenv not installed; falling back to manual .env loader")
+        with dotenv_path.open("r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key and value and key not in os.environ:
+                    os.environ[key] = value
+        print(f"Loaded .env fallback from: {dotenv_path}")
+        print("GOPHISH_BASE_URL present:", bool(os.getenv("GOPHISH_BASE_URL")))
+        print("GOPHISH_API_KEY present:", bool(os.getenv("GOPHISH_API_KEY")))
+    else:
+        print("No .env file found at", dotenv_path)
 
 _PROCESSED_DATASET = BASE_DIR / "data" / "processed" / "training_emails.csv"
 _SAMPLE_DATASET = BASE_DIR / "data" / "sample_emails.csv"
@@ -94,13 +128,27 @@ def detect_email(payload: DetectionRequest) -> dict:
 
 
 @app.get("/api/detections")
-def list_detections() -> dict:
-    return {"items": store.list_detections(limit=25)}
+def list_detections(limit: int = Query(25, ge=1, le=100)) -> dict:
+    return {"items": store.list_detections(limit=limit)}
 
 
 @app.get("/api/metrics")
 def metrics() -> dict:
-    return store.metrics()
+    results = store.metrics()
+    try:
+        status = get_gophish_status()
+        results["gophish"] = {
+            "configured": status.get("configured", False),
+            "reachable": status.get("reachable", False),
+            "campaign_count": status.get("campaign_count", 0),
+            "base_url": status.get("base_url"),
+        }
+    except Exception:
+        results["gophish"] = {
+            "configured": False,
+            "reachable": False,
+        }
+    return results
 
 
 @app.get("/api/employees")
@@ -109,8 +157,110 @@ def employees() -> dict:
 
 
 @app.get("/api/campaigns")
-def campaigns() -> dict:
+def campaigns(source: str = Query("local")) -> dict:
+    if source == "gophish":
+        try:
+            return {"items": get_gophish_campaigns()}
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
     return {"items": store.list_campaigns()}
+
+
+@app.get("/api/gophish/campaigns")
+def gophish_campaigns() -> dict:
+    return {"items": get_gophish_campaigns()}
+
+
+@app.get("/api/gophish/status")
+def gophish_status() -> dict:
+    return get_gophish_status()
+
+
+def _extract_expected_domain(sender_email: str | None) -> str:
+    if not sender_email or "@" not in sender_email:
+        return ""
+    return sender_email.split("@", 1)[1].strip().lower()
+
+
+def _build_recommendations(label: str, risk_level: str, reasons: list[str]) -> list[str]:
+    recommendations: list[str] = []
+    if label == "phishing":
+        recommendations.extend([
+            "Do not click any links or buttons in this email.",
+            "Report the suspected phishing email to your security team.",
+            "Verify the sender address and expected domain before responding.",
+        ])
+    elif risk_level == "medium":
+        recommendations.extend([
+            "Review the sender details and link destinations carefully.",
+            "Hover over links before clicking to verify the target URL.",
+        ])
+    else:
+        recommendations.extend([
+            "Maintain vigilance and confirm any unexpected requests.",
+            "If unsure, verify directly with the sender through a trusted channel.",
+        ])
+    if reasons:
+        recommendations.append("Key findings: " + "; ".join(reasons[:3]))
+    return recommendations
+
+
+@app.get("/api/gophish/campaigns/{campaign_id}/analysis")
+def gophish_campaign_analysis(campaign_id: str) -> dict:
+    try:
+        campaign = get_gophish_campaign_details(campaign_id)
+        template = campaign.get("template", {}) if isinstance(campaign, dict) else {}
+        subject = template.get("subject") or campaign.get("name") or ""
+        sender_email = (
+            template.get("from_address")
+            or template.get("sender")
+            or campaign.get("from_address")
+            or campaign.get("sender")
+            or ""
+        )
+        reply_to_email = template.get("reply_to") or template.get("reply_to_address") or ""
+        html_body = template.get("html") or template.get("html_body") or campaign.get("html") or ""
+        text_body = template.get("text") or template.get("body") or campaign.get("text") or ""
+        expected_domain = _extract_expected_domain(sender_email)
+
+        analysis = detector.predict(
+            subject=subject,
+            body=text_body or html_body,
+            urls=template.get("urls") or [],
+            sender_email=sender_email,
+            reply_to_email=reply_to_email,
+            expected_domain=expected_domain,
+            html_body=html_body,
+            image_urls=template.get("image_urls") or [],
+            attachment_names=template.get("attachment_names") or [],
+        )
+
+        return {
+            "campaign_id": campaign_id,
+            "campaign_name": campaign.get("name") or subject,
+            "template": {
+                "subject": subject,
+                "sender_email": sender_email,
+                "reply_to_email": reply_to_email,
+                "text_body": text_body,
+                "html_body": html_body,
+                "url_list": template.get("urls") or [],
+            },
+            "analysis": {
+                **analysis,
+                "recommendations": _build_recommendations(
+                    analysis.get("label", ""),
+                    analysis.get("risk_level", "low"),
+                    analysis.get("reasons", []),
+                ),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @app.post("/api/events")

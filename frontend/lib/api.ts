@@ -1,9 +1,9 @@
 import axios from 'axios'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 const api = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_BASE_URL || undefined,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -107,6 +107,27 @@ export const detectionAPI = {
 
   async getMetrics(): Promise<any> {
     const response = await api.get('/api/metrics')
+    return response.data
+  },
+
+  async getGoPhishStatus(): Promise<any> {
+    const response = await api.get('/api/gophish/status')
+    return response.data
+  },
+
+  async getGoPhishCampaigns(): Promise<any[]> {
+    const response = await api.get('/api/gophish/campaigns')
+    return response.data?.items || []
+  },
+
+  async getGoPhishCampaignResults(campaignId: string): Promise<any> {
+    const response = await api.get(`/api/gophish/campaigns/${encodeURIComponent(campaignId)}/results`)
+    return response.data?.items || response.data
+  },
+
+  async analyzeGoPhishCampaign(campaignId: string): Promise<any> {
+    const response = await api.get(`/api/gophish/campaigns/${encodeURIComponent(campaignId)}/analysis`)
+    console.debug('GoPhish analysis response:', response.data)
     return response.data
   },
 
